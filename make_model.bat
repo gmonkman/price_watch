@@ -1,0 +1,1 @@
+python -m pwiz -e sqlite -o prices.db > orm.py

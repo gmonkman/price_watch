@@ -1,75 +1,79 @@
-import requests, json
+import requests
+from abc import ABC as _ABC
 
-BOT_TOKEN = "TOKEN"
-CHAT_ID = 0
-CONFIGURED = False
+__all__ = ['PushBullet', 'WhatsApp']
+try:
+    import pywhatkit as _pywhatkit  # noqa
+except ImportError:
+    print('Failed to import pywhatkit.')
+
+try:
+    from pushbullet import Pushbullet as _Pushbullet
+except ImportError:
+    print('Failed to import pushbullet.')
+    _Pushbullet = None
+
+import config as _config
 
 
-def retrieve_config() -> tuple | None:
+class Telegram(_ABC):
     """
-        Loads the basic configuration for the telegram bot.
+    This is a namespace class for Telegram notifications
+    to the user defined in config.py
+
+    Methods:
+        send: Send notification message
     """
-    try:
-        content = json.loads(open("telegram_config.json").read())
-        return content["bot_token"], content["chat_id"]
-    except FileNotFoundError:
-        print("Telegram config file not found, run 'python notifier.py' to setup bot.")
-        return None
+
+    @staticmethod
+    def send(message: str) -> None:
+        """
+            Sends message to chat
+            Parameters:
+             message(str): The string of the message to be sent
+        """
+        try:
+            data = {
+                "chat_id": _config.Telegram.chat_id,
+                "text": message
+            }
+            headers = {'Content-Type': 'application/json'}
+            url = f"https://api.telegram.org/bot{_config.Telegram.bot_token}/sendMessage"
+            requests.post(url, json=data, headers=headers)
+        except Exception as e:
+            print(f'Telegram message failed. The error was:\n{repr(e)}')
 
 
-def message_user(message: str, notify: bool = False) -> None:
+class WhatsApp(_ABC):
     """
-        Sends message to chat
-        Parameters:
-         message(str): The string of the message to be sent
-         notify(bool): Whether to notify the user or not, only works for channels
+    This is a namespace class for WhatsApp notifications
+    to the phone number in config.py
+
+    Methods:
+        send: Send notification message with WhatsApp
     """
-    if not CONFIGURED:
-        print(message)
-        return
-    try:
-        data = {
-            "chat_id": str(CHAT_ID),
-            "text": message,
-            "disable_notification": not notify
-        }
-        headers = {'Content-Type': 'application/json'}
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        res = requests.post(url, json=data, headers=headers)
-    except:
-        print(f"Message couldn't be sent!\nMessage content: {message}")
+
+    @staticmethod
+    def send(message: str) -> None:
+        _pywhatkit.sendwhatmsg_instantly(_config.WhatsApp.phone_nr, message, 0, True)
 
 
-def setup_bot() -> None:
+class PushBullet(_ABC):
     """
-        Retrieves bot ID and from a message sent retrieves the chat id, saves values in file
+    This is a namespace class for Pushbullet notifications
+
+    Methods:
+        send: Send notification message with Pushbullet
     """
-    print("Welcome to setup for telegram bot notifier!")
-    bot_token = input("Enter the bot token: ")
-    input("Send a message to the bot before pressing Enter")
-    print("Retrieving messages from bot...")
-    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
-    res = requests.get(url)
-    message_list = res.json()
-    if len(message_list) == 0:
-        print("No messages have been sent, exiting...")
-        return
-    last_message = message_list["result"][-1]
-    if input(f"Are you {last_message['message']['from']['first_name']}? (y or leave blank for yes)").lower() in ['y', '']:
-        chat_id = last_message["message"]["chat"]["id"]
-        print(f"Saving chat id as {chat_id}")
-        data = {
-            "bot_token": bot_token,
-            "chat_id": chat_id
-        }
-        open("telegram_config.json", "w").write(json.dumps(data))
+
+    @staticmethod
+    def send(title: str, body: str) -> None:
+        try:
+            Pb = _Pushbullet(_config.Pushbullet.token)
+            Pb.push_note(title, body)
+        except Exception as e:
+            print(f'Pushbullet message failed. The error was:\n{repr(e)}')
 
 
 if __name__ == "__main__":
-    setup_bot()
-else:
-    try:
-        BOT_TOKEN, CHAT_ID = retrieve_config()
-        CONFIGURED = True
-    except:
-        pass
+    pass
