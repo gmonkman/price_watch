@@ -74,22 +74,22 @@ class MonitorBaseMixin:
 
     def _log_scrape_started(self) -> None:
         # Dont move this to the init. The peewee model wont be initialised.
-        Log = Log()  # noqa
-        Log.monitorid = self.monitorid  # noqa
-        Log.action = f'({self.parser} {EnumLogAction.ScrapingStarted.text}'  # noqa
-        Log.level = EnumLogLevel.INFO.text  # noqa
-        Log.when = _stringslib.pretty_date_now(with_time=True)
-        Log.comment = f'Started scraping {self.parser} at {self.url}.\nMonitorid:{self.monitorid}'  # noqa
-        Log.save()
+        Log_ = Log()  # noqa
+        Log_.monitorid = self.monitorid  # noqa
+        Log_.action = f'{self.parser} {EnumLogAction.ScrapingStarted.value}'  # noqa
+        Log_.level = EnumLogLevel.INFO.value  # noqa
+        Log_.when = _stringslib.pretty_date_now(with_time=True)
+        Log_.comment = f'Started scraping {self.parser} at {self.url}.\nMonitorid:{self.monitorid}'  # noqa
+        Log_.save()
 
     def _log_scrape_complete(self) -> None:
-        Log = Log()  # noqa
-        Log.monitorid = self.monitorid  # noqa
-        Log.action = EnumLogAction.ScrapingFinished.text  # noqa
-        Log.level = EnumLogLevel.INFO.text  # noqa
-        Log.when = _stringslib.pretty_date_now(with_time=True)
-        Log.comment = f'Finished scraping {self.parser} at {self.url}.\nMonitorid:{self.monitorid}'  # noqa
-        Log.save()
+        Log_ = Log()  # noqa
+        Log_.monitorid = self.monitorid  # noqa
+        Log_.action = f'{self.parser} {EnumLogAction.ScrapingStarted.value}'  # noqa
+        Log_.level = EnumLogLevel.INFO.value  # noqa
+        Log_.when = _stringslib.pretty_date_now(with_time=True)
+        Log_.comment = f'Finished scraping {self.parser} at {self.url}.\nMonitorid:{self.monitorid}'  # noqa
+        Log_.save()
 
     def _log_scraping_error(self, e: Exception) -> None:
         """Log an error, passing in an error instance, e
@@ -241,6 +241,7 @@ class ProductExt(Product):
 # region monitors
 class Argos(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Argos
     class Meta:
         table_name = 'monitor'
 
@@ -303,6 +304,7 @@ class Argos(MonitorBaseMixin, Monitor):
 
 class AWDIT(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test AWDIT
     class Meta:
         table_name = 'monitor'
 
@@ -316,7 +318,7 @@ class AWDIT(MonitorBaseMixin, Monitor):
                 products = soup.find_all('div', 'product details product-item-details')  # noqa
                 for product in products:
                     s = str(product).lower()
-                    if self._match(s) and 'in stock' in products:
+                    if self._match(s) and 'in stock' in s:
                         soup_tmp = BeautifulSoup(str(product.span.span), 'html.parser')
                         tag = soup_tmp.find('span', 'price-wrapper price-including-tax')  # noqa
                         price = float(tag['data-price-amount'])
@@ -352,6 +354,7 @@ class AWDIT(MonitorBaseMixin, Monitor):
 
 class Box(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Box
     class Meta:
         table_name = 'monitor'
 
@@ -398,8 +401,10 @@ class Box(MonitorBaseMixin, Monitor):
         self._soups = soups
         return soups
 
+
 class CashConverters(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test CashConverters
     class Meta:
         table_name = 'monitor'
 
@@ -422,7 +427,7 @@ class CashConverters(MonitorBaseMixin, Monitor):
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
 
-                        element = product.find('span', 'product-item__title__description'.lower())
+                        element = product.find('span', 'product-item__title__description'.lower())  # noqa
                         product_title = element.text
                         super().scrape(price, product_url, product_title)
         except Exception as e:
@@ -431,18 +436,16 @@ class CashConverters(MonitorBaseMixin, Monitor):
         self._log_scrape_complete()
 
     @property
-    def soups(self) -> list[str]:
+    def soups(self) -> list[BeautifulSoup]:
         ITEMS_PER_PAGE = 24
-        start, end = 0, 0
         if self._soups: return self._soups
 
-        page_urls = [self.url]
         res = _selenium_to_str(self.url)
         soup = BeautifulSoup(res, "html.parser")
         soups = [soup]
 
         # now get number of pages
-        element = soup.find('span', 'result-count__text')
+        element = soup.find('span', 'result-count__text')  # noqa
         page_count = int(_stringslib.numbers_in_str(element.text)[0] / ITEMS_PER_PAGE)
         # cashconverters is weird - if we put the max page count in, we dont get the last page
         # we get the entire list of items loaded, so we dont need to generate soups for each page
@@ -459,6 +462,7 @@ class CashConverters(MonitorBaseMixin, Monitor):
                     else:
                         break
                 page_url = self.url.replace(self.url[start:end], f'&page={page_count}')
+                soups = [BeautifulSoup(_selenium_to_str(page_url), 'html.parser')]
             else:  # easy, no page= in the scrape url to replace
                 page_url = '&page=' + str(page_count)
                 # This is correct, replace the original soup with this soup that will contain every single paginated item
@@ -467,8 +471,10 @@ class CashConverters(MonitorBaseMixin, Monitor):
         self._soups = soups
         return soups
 
+
 class CCLOnline(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test CCLOnline
     class Meta:
         table_name = 'monitor'
 
@@ -515,8 +521,71 @@ class CCLOnline(MonitorBaseMixin, Monitor):
         self._soups = soups
         return soups
 
+
+class Cex(MonitorBaseMixin, Monitor):
+    """ Cex multi product scraper.
+
+    Cex has a really shit search facility, but it mostly uses url query strings to persist searches,
+    so make sure we use a decent selection of filters to minimise the number of returned products.
+
+    Dont forget to include the in-stock filter.
+    """
+
+    # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Cex
+    class Meta:
+        table_name = 'monitor'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)  # first to the mixin, the mixin then passes to orm.Monitor constructor
+
+    def scrape(self):  # noqa
+        self._log_scrape_started()
+        try:
+            for soup in self.soups:
+                products = soup.find_all('div', 'search-product-card')  # noqa
+                for product in products:
+                    s = str(product).lower()
+                    if self._match(s) and 'in stock' in s:
+                        element = product.find('p', 'product-main-price')  # noqa
+                        price = _stringslib.numbers_in_str(element.text, type_=float)[0]  # noqa
+
+                        element = element.find('a', 'line-clamp')
+                        product_url = element['href']
+                        product_url = f'{self.site}{product_url}'
+
+                        product_title = element.text
+                        super().scrape(price, product_url, product_title)
+        except Exception as e:
+            self._log_scraping_error(e)
+            return
+        self._log_scrape_complete()
+
+    @property
+    def soups(self) -> list[str]:
+        if self._soups: return self._soups
+        page_urls = [self.url]
+        res = _selenium_to_str(self.url)
+        soup = BeautifulSoup(res, "html.parser")
+
+        anchors = soup.find_all('a', 'ais-Pagination-link')  # noqa
+        if anchors:
+            for tag in anchors:
+                page_urls += [tag.get('href')]
+            page_urls = list(set(page_urls))  # we don't need the first page, we already have the soup
+
+        soups = [soup]
+        if len(page_urls) > 1:
+            for link in page_urls[1:]:
+                _sleep(_random.randrange(1, 5))
+                soups += [BeautifulSoup(_selenium_to_str(link), 'html.parser')]
+        self._soups = soups
+        return soups
+
+
 class ComputerOrbit(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test ComputerOrbit
     class Meta:
         table_name = 'monitor'
 
@@ -578,6 +647,7 @@ class ComputerOrbit(MonitorBaseMixin, Monitor):
 
 class Currys(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Currys
     class Meta:
         table_name = 'monitor'
 
@@ -622,7 +692,7 @@ class Currys(MonitorBaseMixin, Monitor):
         # links to work for very long
         elements = soup.find_all('li', 'page-item')  # noqa
         if elements:
-            tmp_url = self.url[0:len(self.url)-1] if self.url[-1] == '/' else self.url
+            tmp_url = self.url[0:len(self.url) - 1] if self.url[-1] == '/' else self.url
             element = soup.find('div', 'page-result-count')  # noqa
             if element:
                 item_count = _stringslib.numbers_in_str(element.text)[0]
@@ -630,7 +700,7 @@ class Currys(MonitorBaseMixin, Monitor):
 
                 if pages > 1:
                     # https://www.currys.co.uk/computing/components-and-upgrades/graphics-cards?start=160&sz=20 [page 9]
-                    for page in range(2, pages+1):
+                    for page in range(2, pages + 1):
                         start = page * 20 - 20
                         page_urls += [f'{tmp_url}?start={start}&sz=20']
 
@@ -646,6 +716,7 @@ class Currys(MonitorBaseMixin, Monitor):
 
 class Novatech(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Novatech
     class Meta:
         table_name = 'monitor'
 
@@ -700,8 +771,10 @@ class Novatech(MonitorBaseMixin, Monitor):
         self._soups = soups
         return soups
 
+
 class Overclockers(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Overclockers
     class Meta:
         table_name = 'monitor'
 
@@ -756,8 +829,50 @@ class Overclockers(MonitorBaseMixin, Monitor):
         return soups
 
 
+class RyobiSingleProduct(MonitorBaseMixin, Monitor):
+    # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test RyobiSingleProduct
+    class Meta:
+        table_name = 'monitor'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)  # first to the mixin, the mixin then passes to orm.Monitor constructor
+
+    def scrape(self):  # noqa
+        self._log_scrape_started()
+        try:
+            for soup in self.soups:
+                products = soup.find_all('div', 'ProductDetailsstyles__Content-hb5d0o-1 ksUgWJ')  # noqa  Only one product, but keep same code pattern as multiproduct
+                for product in products:
+                    s = str(product).lower()
+                    if self._match(s) and 'add to basket' in s:
+                        element = product.find('span', 'ProductDetailPricestyles__Main-sc-80n9g9-3 frlOqI'.lower())  # noqa
+                        element = element.find('span')
+                        price = _stringslib.numbers_in_str(element.text, type_=float)[0]
+
+                        product_url = self.url  # single product page, this is correct
+
+                        element = product.find('h1', 'ProductDetailsstyles__Title-hb5d0o-3 dcvWgw'.lower())  # noqa
+                        product_title = element.text
+                        super().scrape(price, product_url, product_title)
+        except Exception as e:
+            self._log_scraping_error(e)
+            return
+        self._log_scrape_complete()
+
+    @property
+    def soups(self) -> list[BeautifulSoup]:
+        if self._soups: return self._soups
+        res = _selenium_to_str(self.url)
+        soup = BeautifulSoup(res, "html.parser")
+        soups = [soup]
+        self._soups = soups
+        return soups
+
+
 class Scan(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test Scan
     class Meta:
         table_name = 'monitor'
 
@@ -813,6 +928,8 @@ class Scan(MonitorBaseMixin, Monitor):
 
         self._soups = soups
         return soups
+
+
 # endregion monitors
 
 
@@ -836,7 +953,6 @@ def _fix_source(source):
         for model in ('50', '60', '70', '80', '90'):
             source = source.replace(f'{generation}{model} ti', f'{generation}{model}ti')
     return source
-
 
 
 def _request_to_str(url: str) -> str:
@@ -927,3 +1043,6 @@ if __name__ == '__main__':
     if False:
         Mmain = Currys.get_by_id(3)
         Mmain.scrape()
+
+    Mmain = RyobiSingleProduct.get_by_id(12)
+    Mmain.scrape()

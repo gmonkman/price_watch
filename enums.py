@@ -32,16 +32,22 @@ class EnumParsers(_Enum):
     Argos = 'Argos'
     AWDIT = 'AWDIT'
     Box = 'Box'
+    CashConverters = 'CashConverters'
     CCLOnline = 'CCLOnline'
-    CCLOnline = 'CCLOnline'
+    Cex = 'Cex'
+    Currency = 'Currency'
     ComputerOrbit = 'ComputerOrbit'
     Currys = 'Currys'
     EbaySingleProduct = 'EbaySingleProduct'
     Novatech = 'Novatech'
     Overclockers = 'Overclockers'
+    RyobiSingleProduct = 'RyobiSingleProduct'
     Scan = 'Scan'
 
-
+class EnumNotifiers(_Enum):
+    PushBullet = 'PushBullet'
+    Telegram = 'Telegram'
+    WhatsApp = 'WhatsApp'
 
 
 # endregion Enums
