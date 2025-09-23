@@ -16,10 +16,10 @@ NOTIFIERS = [EnumNotifiers.PushBullet]
 
 
 class WhatsApp(ABC):
-    phone_nr = '+44123456789'
+    phone_nr = 'whatsapp number here'
 
 class Pushbullet(ABC):
-    token = 'o.madeuptoken'
+    token = 'token here'
 
 class Telegram(ABC):
     bot_token = ''

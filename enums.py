@@ -35,7 +35,6 @@ class EnumParsers(_Enum):
     CashConverters = 'CashConverters'
     CCLOnline = 'CCLOnline'
     Cex = 'Cex'
-    Currency = 'Currency'
     ComputerOrbit = 'ComputerOrbit'
     Currys = 'Currys'
     EbaySingleProduct = 'EbaySingleProduct'
@@ -43,6 +42,9 @@ class EnumParsers(_Enum):
     Overclockers = 'Overclockers'
     RyobiSingleProduct = 'RyobiSingleProduct'
     Scan = 'Scan'
+    ScrewfixSingleProduct = 'ScrewfixSingleProduct'
+    ToolStationSingleProduct = 'ToolStationSingleProduct'
+
 
 class EnumNotifiers(_Enum):
     PushBullet = 'PushBullet'

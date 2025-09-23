@@ -43,7 +43,7 @@ class MonitorBaseMixin:
         Args:
             price (float): Price of the product.
             product_url (str): URL of the product.
-            product_title (str): Title of the product.
+            product_title (str): Title of the product. _clean_str is called on product_title to eliminate space prefix/suffixes, CRLFs etc.
         """
         # Common code to insert monitor history rows. Each scrape event in the inheriting classes
         # can have multiple products below the price threshold
@@ -207,8 +207,7 @@ class AlertExt(Alert):
         histories = MonitorHistoryExt.select().where(alert_sent=0)
         h: MonitorHistoryExt
         for h in histories:
-            if not h.alert_sent:
-                alerts += [h]
+            alerts += [h]
         return alerts
 
     @staticmethod
@@ -713,6 +712,48 @@ class Currys(MonitorBaseMixin, Monitor):
         self._soups = soups
         return soups
 
+class ScrewfixSingleProduct(MonitorBaseMixin, Monitor):
+    # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test ScrewfixSingleProduct
+    class Meta:
+        table_name = 'monitor'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)  # first to the mixin, the mixin then passes to orm.Monitor constructor
+
+    def scrape(self):  # noqa
+        self._log_scrape_started()
+        try:
+            for soup in self.soups:
+                products = soup.find_all('div', 'RggDHg')  # noqa  Only one product, but keep same code pattern as multiproduct
+                for product in products:
+                    s = str(product).lower()
+                    if self._match(s):
+                        element = product.find('span', '_U1S20'.lower())  # noqa
+                        price_pounds = _stringslib.numbers_in_str(element.text, type_=int)[0]
+
+                        element = product.find('span', 'xIIluZ'.lower())  # noqa
+                        price_pence = _stringslib.numbers_in_str(element.text, type_=int)[0]
+                        price = price_pounds + (price_pence/100)
+
+                        product_url = self.url  # single product page, this is correct
+
+                        element = product.find('span', {'itemprop': 'name'})  # noqa
+                        product_title = element.text
+                        super().scrape(price, product_url, product_title)
+        except Exception as e:
+            self._log_scraping_error(e)
+            return
+        self._log_scrape_complete()
+
+    @property
+    def soups(self) -> list[BeautifulSoup]:
+        if self._soups: return self._soups
+        res = _selenium_to_str(self.url)
+        soup = BeautifulSoup(res, "html.parser")
+        soups = [soup]
+        self._soups = soups
+        return soups
 
 class Novatech(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
@@ -944,15 +985,67 @@ def _fix_source(source):
     """Some random QOL fixes on source strings"""
     for generation in ('5', '6', '7'):
         for model in ('600', '700', '800', '900'):
-            source = source.replace(f'{generation}{model} xt', f'{generation}{model}xt')
+            source = source.replace(f'{generation}{model} xtx', f'{generation}{model}xtx')
+            source = source.replace(f'{generation}{model} XTX', f'{generation}{model}xtx')
+            source = source.replace(f'{generation}{model} Xtx', f'{generation}{model}xtx')
 
-    source = source.lower().replace('9070 xt', '9070xt')
+            source = source.replace(f'{generation}{model} xt', f'{generation}{model}xt')
+            source = source.replace(f'{generation}{model} XT', f'{generation}{model}xt')
+            source = source.replace(f'{generation}{model} Xt', f'{generation}{model}xt')
+
+    source = source.replace('9070 xt', '9070xt')
     source = source.replace('9060 xt', '9060xt')
+    source = source.replace('9070 XT', '9070xt')
+    source = source.replace('9060 XT', '9060xt')
+    source = source.replace('9070 Xt', '9070xt')
+    source = source.replace('9060 Xt', '9060xt')
 
     for generation in ('30', '40', '50', '60'):
         for model in ('50', '60', '70', '80', '90'):
             source = source.replace(f'{generation}{model} ti', f'{generation}{model}ti')
+            source = source.replace(f'{generation}{model} TI', f'{generation}{model}ti')
+            source = source.replace(f'{generation}{model} Ti', f'{generation}{model}ti')
     return source
+
+
+class ToolStationSingleProduct(MonitorBaseMixin, Monitor):
+    # This has to go here, it doesnt work in the MonitorBaseMixin
+    # TODO: Test ToolStationSingleProduct
+    class Meta:
+        table_name = 'monitor'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)  # first to the mixin, the mixin then passes to orm.Monitor constructor
+
+    def scrape(self):  # noqa
+        self._log_scrape_started()
+        try:
+            for soup in self.soups:
+                products = soup.find_all('div', 'content-container px-0 xs:pt-5 md:pt-8 md:pb-22 lg:px-12')  # noqa  Only one product, but keep same code pattern as multiproduct
+                for product in products:
+                    s = str(product).lower()
+                    if self._match(s) and 'available for delivery' in s:
+                        element = product.find('span', 'font-bold text-[28px] md:text-size-9'.lower())  # noqa
+                        price = _stringslib.numbers_in_str(element.text, type_=float)[0]
+
+                        product_url = self.url  # single product page, this is correct
+
+                        element = product.find('h1', 'font-bold text-blue text-size-6 md:text-size-8 lg:text-size-9')  # noqa
+                        product_title = element.text
+                        super().scrape(price, product_url, product_title)
+        except Exception as e:
+            self._log_scraping_error(e)
+            return
+        self._log_scrape_complete()
+
+    @property
+    def soups(self) -> list[BeautifulSoup]:
+        if self._soups: return self._soups
+        res = _selenium_to_str(self.url)
+        soup = BeautifulSoup(res, "html.parser")
+        soups = [soup]
+        self._soups = soups
+        return soups
 
 
 def _request_to_str(url: str) -> str:

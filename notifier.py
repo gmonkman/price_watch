@@ -5,7 +5,7 @@ import fuckit as _fuckit
 
 import funclite.stringslib as _stringslib
 
-from orm_extensions import LogExt as _LogExt
+from orm import Log as _Log
 from enums import *
 
 __all__ = ['PushBullet', 'Telegram', 'WhatsApp']
@@ -91,7 +91,7 @@ class PushBullet(_ABC):
 # region helper methods
 def _logit(notifier: str, monitorid: int | None, e: Exception) -> None:
     with _fuckit:
-        Log_ = _LogExt()  # noqa
+        Log_ = _Log()  # noqa
         Log_.monitorid = monitorid  # noqa
         Log_.action = f'{self.parser} {EnumLogAction.Notify.value}'  # noqa
         Log_.level = EnumLogLevel.ERROR.value  # noqa
