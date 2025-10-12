@@ -45,30 +45,34 @@ class MonitorBaseMixin:
             product_url (str): URL of the product.
             product_title (str): Title of the product. _clean_str is called on product_title to eliminate space prefix/suffixes, CRLFs etc.
         """
+        # TODO: Test MonitorBaseMixin.scrape
+
         # Common code to insert monitor history rows. Each scrape event in the inheriting classes
-        # can have multiple products below the price threshold
-        # No need to capture and log error here, this is wrapped in a try-catch in child scrape method
+        # can have multiple products below the price threshold for a single monitor. e.g. when looking for bargain 9070xt
+        # We only add an alert if the price has changed for the same monitor and the same product AS IDENTIFIED BY ITS URL
+        
+        # No need to capture and logs error here, this is wrapped in a try-catch in child scrape method
+        add_ = True
         P = Product.get(Product.productid == self.productid)  # noqa
+        product_title = _clean_str(product_title)
         if price and price <= P.price_alert_threshold:
-            add_ = True
             MHCheck = MonitorHistory.select().where(
                 MonitorHistory.monitorid == self.monitorid,  # noqa
-                MonitorHistory.product_title == product_title).order_by(MonitorHistory.date_when.desc()).limit(1)
+                MonitorHistory.product_url == product_url).order_by(MonitorHistory.date_when.desc()).limit(1)
 
-            if MHCheck:
-                for Row in MHCheck:
-                    if Row.price != price:
-                        DATABASE.execute_sql('update monitor_history set alert_sent=1 where monitorid=? and product_url=?',
-                                             (self.monitorid, product_url))  # noqa
-                    else:
-                        add_ = False
+            for Row in MHCheck:
+                if Row.price != price:
+                    DATABASE.execute_sql('update monitor_history set alert_sent=1 where monitorid=? and product_url=?',
+                                         (self.monitorid, product_url))  # noqa
+                else:
+                    add_ = False
 
             if add_:
                 MH = MonitorHistory()
                 MH.monitorid = self.monitorid  # noqa
                 MH.price = price
                 MH.product_url = product_url
-                MH.product_title = _clean_str(product_title)
+                MH.product_title = product_title
                 MH.date_when = _stringslib.pretty_date_now(with_time=True)
                 MH.save()
 
@@ -85,7 +89,7 @@ class MonitorBaseMixin:
     def _log_scrape_complete(self) -> None:
         Log_ = Log()  # noqa
         Log_.monitorid = self.monitorid  # noqa
-        Log_.action = f'{self.parser} {EnumLogAction.ScrapingStarted.value}'  # noqa
+        Log_.action = f'{self.parser} {EnumLogAction.ScrapingFinished.value}'  # noqa
         Log_.level = EnumLogLevel.INFO.value  # noqa
         Log_.when = _stringslib.pretty_date_now(with_time=True)
         Log_.comment = f'Finished scraping {self.parser} at {self.url}.\nMonitorid:{self.monitorid}'  # noqa
@@ -107,35 +111,33 @@ class MonitorBaseMixin:
 
     def _match(self, s: str):
         and_ = all([match.lower() in s.lower() for match in self._match_and_tuple]) or not self._match_and_tuple
-        or_ = any([match.lower() in s.lower() for match in self._match_and_tuple]) or not self._match_or_tuple
+        or_ = any([match.lower() in s.lower() for match in self._match_or_tuple]) or not self._match_or_tuple
         return and_ and or_
         # endregion instance methods
 
     # region instance properties
     @property
     def _match_and_tuple(self):
-        if not self.match_and:  # noqa
-            return tuple()
-        if isinstance(self.match_and, str):  # noqa
-            s = "['%s']" % self.match_and  # noqa
-        else:
-            s = self.match_or  # noqa
-        return _ast.literal_eval(s)  # noqa
+        """ takes underlying database value for "and" and converts to a literal tuple
+        also accepts a plain string
+        """
+        return _make_tuple(self.match_and)  # noqa
 
     @property
     def _match_or_tuple(self):
-        if not self.match_or:  # noqa
-            return tuple()
-        if isinstance(self.match_or, str):  # noqa
-            s = "['%s']" % self.match_or  # noqa
-        else:
-            s = self.match_or  # noqa
-        return _ast.literal_eval(s)  # noqa
+        """ takes underlying database value for "or" and converts to a literal tuple
+        also accepts a plain string
+        """
+        return _make_tuple(self.match_or)  # noqa
 
     @property
     def site(self) -> str:
-        """Get the site address from the monitor url"""
-        return _urlparse(self.Monitor.url).netloc  # noqa
+        """Get the site address from the monitor url.
+        Ensures that the site address DOES NOT end in /"""
+        s = _urlparse(self.Monitor.url).netloc  # noqa
+        if s[-1] == '/':
+            s = s[:-1]
+        return s
 
     # endregion instance properties
 
@@ -256,16 +258,16 @@ class Argos(MonitorBaseMixin, Monitor):
                     # incase website inconsistent
                     s = str(product).lower()
                     if self._match(s) and 'add to trolley' in s:  # today is in stock test
-                        element = product.find('div', 'ProductCardstyles__PriceText-h52kot-17 kpmggk'.lower())  # noqa
+                        element = product.find('div', 'ProductCardstyles__PriceText-h52kot-17 kpmggk')  # noqa
                         price = element.strong.text
                         price = float(price.replace('£', ''))
 
-                        element = product.find('a', 'ProductCardstyles__Link-h52kot-14 iGahUl'.lower())  # noqa
+                        element = product.find('a', 'ProductCardstyles__Link-h52kot-14 iGahUl')  # noqa
                         element = element.find('a')
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
 
-                        element = product.find('div', 'ProductCardstyles__Title-h52kot-13 eSMKzA'.lower())
+                        element = product.find('div', 'ProductCardstyles__Title-h52kot-13 eSMKzA')
                         product_title = element.text
                         super().scrape(price, product_url, product_title)
         except Exception as e:
@@ -284,7 +286,7 @@ class Argos(MonitorBaseMixin, Monitor):
 
         elements = soup.find_all('a', 'Paginationstyles__PageLink-sc-1temk9l-1 ifyeGc xs-hidden sm-row')  # noqa
         if elements:
-            s = '/' if self.url[-1] == '/' else ''
+            s = '' if self.url[-1] == '/' else '/'
             try:
                 _ = elements[0]['href']
                 page_urls.extend([f'{self.url}{s}{element.a['href']}' for element in elements])
@@ -339,7 +341,7 @@ class AWDIT(MonitorBaseMixin, Monitor):
         anchors = soup.find_all('a', 'page')  # noqa
         if anchors:
             for tag in anchors:
-                page_urls += [tag.get('href')]
+                page_urls += [tag.get('href')]  # this is correct, the hrefs a fully qualified
             page_urls = list(set(page_urls))  # we don't need the first page, we already have the soup
 
         soups = [soup]
@@ -368,11 +370,11 @@ class Box(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s) and 'add to basket' in s:  # today is in stock test
-                        element = product.find('span', 'text-3xl text-heading_primary font-semibold'.lower())  # noqa
+                        element = product.find('span', 'text-3xl text-heading_primary font-semibold')  # noqa
                         price = element.text
                         price = float(price.replace('£', ''))
 
-                        element = product.find('a', 'xl:text-[18px] leading-6 text-sm font-semibold max-h-[76px] min-h-[68px] text-left no-underline block line-clamp-3'.lower())  # noqa
+                        element = product.find('a', 'xl:text-[18px] leading-6 text-sm font-semibold max-h-[76px] min-h-[68px] text-left no-underline block line-clamp-3')  # noqa
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
                         product_title = element.text
@@ -418,15 +420,15 @@ class CashConverters(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s):  # no instock test needed
-                        element = product.find('div', 'product-item__price'.lower())  # noqa
+                        element = product.find('div', 'product-item__price')  # noqa
                         price = int(element.text) + 0.99  # This is correct, we first get the pounds without the pence, then all CC items end in 99 pence, so this simple kludge works currently
 
-                        element = product.find('span', 'product-item__text-wrapper'.lower())  # noqa
+                        element = product.find('span', 'product-item__text-wrapper')  # noqa
                         element = element.find('a')
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
 
-                        element = product.find('span', 'product-item__title__description'.lower())  # noqa
+                        element = product.find('span', 'product-item__title__description')  # noqa
                         product_title = element.text
                         super().scrape(price, product_url, product_title)
         except Exception as e:
@@ -463,7 +465,11 @@ class CashConverters(MonitorBaseMixin, Monitor):
                 page_url = self.url.replace(self.url[start:end], f'&page={page_count}')
                 soups = [BeautifulSoup(_selenium_to_str(page_url), 'html.parser')]
             else:  # easy, no page= in the scrape url to replace
-                page_url = '&page=' + str(page_count)
+                if self.url[-1] == '/':
+                    url = self.url[0:len(self.url) - 1]
+                else:
+                    url = self.url
+                page_url = f'{url}&page={page_count}'
                 # This is correct, replace the original soup with this soup that will contain every single paginated item
                 soups = [BeautifulSoup(_selenium_to_str(page_url), 'html.parser')]
 
@@ -570,7 +576,7 @@ class Cex(MonitorBaseMixin, Monitor):
         anchors = soup.find_all('a', 'ais-Pagination-link')  # noqa
         if anchors:
             for tag in anchors:
-                page_urls += [tag.get('href')]
+                page_urls += [f'{self.site}{tag.get('href')}']
             page_urls = list(set(page_urls))  # we don't need the first page, we already have the soup
 
         soups = [soup]
@@ -599,16 +605,16 @@ class ComputerOrbit(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s) and 'in stock' in s:  # today is in stock test
-                        element = product.find('span', 'money'.lower())  # noqa
+                        element = product.find('span', 'money')  # noqa
                         price = element.text
                         price = float(price.replace('£', ''))
 
-                        element = product.find('h2', 'productitem--title'.lower())  # noqa
+                        element = product.find('h2', 'productitem--title')  # noqa
                         element = element.find('a')
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
 
-                        element = product.find('h2', 'productitem--title'.lower())
+                        element = product.find('h2', 'productitem--title')
                         product_title = element.a.text
                         super().scrape(price, product_url, product_title)
         except Exception as e:
@@ -627,10 +633,9 @@ class ComputerOrbit(MonitorBaseMixin, Monitor):
 
         elements = soup.find_all('a', 'pagination--item')  # noqa
         if elements:
-            s = '/' if self.url[-1] == '/' else ''
             try:
                 _ = elements[0]['href']
-                page_urls.extend([f'{self.url}{s}{element.a['href']}' for element in elements])
+                page_urls.extend([f'{self.site}{element.a['href']}' for element in elements])
             except KeyError:  # not enough products to require pagination
                 pass
 
@@ -662,10 +667,10 @@ class Currys(MonitorBaseMixin, Monitor):
                     # incase website inconsistent
                     s = str(product).lower()
                     if self._match(s) and 'add to basket' in s:  # today is in stock test
-                        element = product.find('span', 'value'.lower())  # noqa
+                        element = product.find('span', 'value')  # noqa
                         price = float(element['content'])
 
-                        element = product.find('a', 'link text-truncate pdpLink'.lower())  # noqa
+                        element = product.find('a', 'link text-truncate pdpLink')  # noqa
                         product_url = element['href']
                         product_url = f'{self.site}{product_url}'
 
@@ -691,7 +696,6 @@ class Currys(MonitorBaseMixin, Monitor):
         # links to work for very long
         elements = soup.find_all('li', 'page-item')  # noqa
         if elements:
-            tmp_url = self.url[0:len(self.url) - 1] if self.url[-1] == '/' else self.url
             element = soup.find('div', 'page-result-count')  # noqa
             if element:
                 item_count = _stringslib.numbers_in_str(element.text)[0]
@@ -701,7 +705,8 @@ class Currys(MonitorBaseMixin, Monitor):
                     # https://www.currys.co.uk/computing/components-and-upgrades/graphics-cards?start=160&sz=20 [page 9]
                     for page in range(2, pages + 1):
                         start = page * 20 - 20
-                        page_urls += [f'{tmp_url}?start={start}&sz=20']
+                        s = _urlconcat(self.url, f'?start={start}&sz=20')
+                        page_urls += [f'{s}']
 
         page_urls = list(set(page_urls))  # we don't need the first page, we already have the soup
         if len(page_urls) > 1:
@@ -714,7 +719,6 @@ class Currys(MonitorBaseMixin, Monitor):
 
 class ScrewfixSingleProduct(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
-    # TODO: Test ScrewfixSingleProduct
     class Meta:
         table_name = 'monitor'
 
@@ -729,10 +733,10 @@ class ScrewfixSingleProduct(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s):
-                        element = product.find('span', '_U1S20'.lower())  # noqa
+                        element = product.find('span', '_U1S20')  # noqa
                         price_pounds = _stringslib.numbers_in_str(element.text, type_=int)[0]
 
-                        element = product.find('span', 'xIIluZ'.lower())  # noqa
+                        element = product.find('span', 'xIIluZ')  # noqa
                         price_pence = _stringslib.numbers_in_str(element.text, type_=int)[0]
                         price = price_pounds + (price_pence/100)
 
@@ -796,10 +800,9 @@ class Novatech(MonitorBaseMixin, Monitor):
 
         elements = soup.find_all('div', {'id': 'page-numbers'})  # noqa
         if elements:
-            s = '/' if self.site[-1] == '/' else ''
             try:
                 _ = elements[0]['href']
-                page_urls.extend([f'{self.site}{s}{element.a['href']}' for element in elements])
+                page_urls.extend([f'{self.url}{element.a['href']}' for element in elements])
                 page_urls = list(set(page_urls))  # we don't need the first page, we already have the soup
             except KeyError:  # not enough products to require pagination
                 pass
@@ -853,10 +856,13 @@ class Overclockers(MonitorBaseMixin, Monitor):
 
         elements = soup.find_all('div', {'id': 'page-numbers'})  # noqa
         if elements:
-            s = '/' if self.url[-1] == '/' else ''
             try:
                 _ = elements[0]['href']
-                page_urls.extend([f'{self.url}{s}{element.a['href']}' for element in elements])
+                # cater for search based urls, search based urls have pages embedded as fully qualified links
+                if '?query=' in self.url:
+                    page_urls.extend([f'{element.a['href']}' for element in elements])
+                else:
+                    page_urls.extend([f'{_urlconcat(self.site, element.a['href'])}' for element in elements])
             except KeyError:  # not enough products to require pagination
                 pass
 
@@ -872,7 +878,6 @@ class Overclockers(MonitorBaseMixin, Monitor):
 
 class RyobiSingleProduct(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
-    # TODO: Test RyobiSingleProduct
     class Meta:
         table_name = 'monitor'
 
@@ -887,13 +892,13 @@ class RyobiSingleProduct(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s) and 'add to basket' in s:
-                        element = product.find('span', 'ProductDetailPricestyles__Main-sc-80n9g9-3 frlOqI'.lower())  # noqa
+                        element = product.find('span', 'ProductDetailPricestyles__Main-sc-80n9g9-3 frlOqI')  # noqa
                         element = element.find('span')
                         price = _stringslib.numbers_in_str(element.text, type_=float)[0]
 
                         product_url = self.url  # single product page, this is correct
 
-                        element = product.find('h1', 'ProductDetailsstyles__Title-hb5d0o-3 dcvWgw'.lower())  # noqa
+                        element = product.find('h1', 'ProductDetailsstyles__Title-hb5d0o-3 dcvWgw')  # noqa
                         product_title = element.text
                         super().scrape(price, product_url, product_title)
         except Exception as e:
@@ -951,27 +956,11 @@ class Scan(MonitorBaseMixin, Monitor):
         res = _selenium_to_str(self.url)
         soup = BeautifulSoup(res, "html.parser")
         soups = [soup]
-
-        elements = soup.find_all('div', {'id': 'page-numbers'})  # noqa
-        if elements:
-            s = '/' if self.url[-1] == '/' else ''
-            try:
-                _ = elements[0]['href']
-                page_urls.extend([f'{self.url}{s}{element.a['href']}' for element in elements])
-            except KeyError:  # not enough products to require pagination
-                pass
-
-        page_urls = list(set(page_urls))
-        if len(page_urls) > 1:
-            for url in page_urls[1:]:
-                _sleep(_random.randrange(1, 5))
-                soups += [BeautifulSoup(_selenium_to_str(url), 'html.parser')]
-
+        # Scan doesnt currently paginate results, returning everything, Check though when identifying your url
         self._soups = soups
         return soups
-
-
 # endregion monitors
+
 
 
 # region module helper methods
@@ -1010,7 +999,6 @@ def _fix_source(source):
 
 class ToolStationSingleProduct(MonitorBaseMixin, Monitor):
     # This has to go here, it doesnt work in the MonitorBaseMixin
-    # TODO: Test ToolStationSingleProduct
     class Meta:
         table_name = 'monitor'
 
@@ -1025,7 +1013,7 @@ class ToolStationSingleProduct(MonitorBaseMixin, Monitor):
                 for product in products:
                     s = str(product).lower()
                     if self._match(s) and 'available for delivery' in s:
-                        element = product.find('span', 'font-bold text-[28px] md:text-size-9'.lower())  # noqa
+                        element = product.find('span', 'font-bold text-[28px] md:text-size-9')  # noqa
                         price = _stringslib.numbers_in_str(element.text, type_=float)[0]
 
                         product_url = self.url  # single product page, this is correct
@@ -1048,6 +1036,7 @@ class ToolStationSingleProduct(MonitorBaseMixin, Monitor):
         return soups
 
 
+# region module methods
 def _request_to_str(url: str) -> str:
     """
     Use simple request to get a webpage source as a string
@@ -1077,6 +1066,25 @@ def _request_to_str(url: str) -> str:
     req = requests.get(url, headers=headers)
     res = _fix_source(req.text)
     return res
+
+def _urlconcat(url: str, s: str) -> str:
+    tmp_url = url[:-1] if url[-1] == '/' else url
+    if s[0] == '/':
+        return f'{tmp_url}{s}'
+    else:
+        return f'{tmp_url}/{s}'
+
+def _make_tuple(s: str) -> tuple:
+    if not s or not isinstance(s, str):  # noqa
+        return tuple()
+
+    # accept a straight string in the database
+    try:
+        out = _ast.literal_eval(s)  # noqa
+    except ValueError:
+        out = (s,)  # noqa
+
+    return out
 
 
 def _selenium_to_str(url) -> str:
@@ -1117,9 +1125,8 @@ def _selenium_to_str(url) -> str:
 
         src = _fix_source(src)
         return src
+# endregion  module methods
 
-
-# endregion
 
 
 if __name__ == '__main__':
@@ -1137,5 +1144,17 @@ if __name__ == '__main__':
         Mmain = Currys.get_by_id(3)
         Mmain.scrape()
 
-    Mmain = RyobiSingleProduct.get_by_id(12)
-    Mmain.scrape()
+    if False:
+        # Done
+        Mmain = RyobiSingleProduct.get_by_id(12)
+        Mmain.scrape()
+
+    if False:
+        # Done
+        Mmain = ScrewfixSingleProduct.get_by_id(15)
+        Mmain.scrape()
+
+    if False:
+        # Done
+        Mmain = ToolStationSingleProduct.get_by_id(16)
+        Mmain.scrape()
