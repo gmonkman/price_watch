@@ -30,6 +30,7 @@ class Monitor(BaseModel):
     match_and = CharField(1024, constraints=[SQL("DEFAULT ''")])  # TEXT (1024)
     match_or = CharField(1024, constraints=[SQL("DEFAULT ''")])  # TEXT (1024)
     disable_alerts = IntegerField(constraints=[SQL("DEFAULT 0")])
+    disable = IntegerField(constraints=[SQL("DEFAULT 0")])
 
     class Meta:
         table_name = 'monitor'

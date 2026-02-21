@@ -22,8 +22,16 @@ from orm import *
 from notifier import PushBullet as _PushBullet
 from notifier import WhatsApp as _WhatsApp
 
-__all__ = ['AWDIT', 'AlertExt',
-           'LogExt', 'MonitorHistoryExt', 'ProductExt']
+__all__ = ['Argos', 'AWDIT', 'AlertExt',
+            'Box',
+            'CashConverters', 'CCLOnline', 'Cex', 'ComputerOrbit', 'Currys',
+            'Novatech',
+           'Overclockers',
+           'RyobiSingleProduct',
+           'Scan',
+           'ScrewfixSingleProduct',
+           'ToolStationSingleProduct'
+           ]
 
 
 class MonitorBaseMixin:

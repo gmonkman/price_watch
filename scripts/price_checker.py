@@ -4,14 +4,18 @@ import random
 from datetime import datetime, timedelta
 from time import sleep
 
+from xlwings.mac_dict import enums
+
+import config
 import dblib.sqlitelib as sqlitelib
 import funclite.iolib as iolib
 import funclite.stringslib as stringslib
 
-import price_getter
+from orm_extensions import *
 import notifier
 import errors
 import orm
+import enums
 
 
 def main() -> None:
@@ -39,8 +43,8 @@ def main() -> None:
                     now = right_now
 
                 print(f"{right_now} ~~ Starting price check...")
-
-                rows = cursor.execute("SELECT productid, parser, url, price, supplier, match_and, match_or FROM monitor").fetchall()
+                #                               0           1     2     3       4       5           6           7
+                rows = cursor.execute("SELECT productid, parser, url, price, supplier, match_and, match_or, monitorid FROM monitor WHERE disable=0").fetchall()
                 new_prices = {}
                 prices = {}
 
@@ -50,14 +54,29 @@ def main() -> None:
                     match_or = ast.literal_eval(row[6])
                     if not match_and: match_and = tuple()
                     if not match_or: match_or = tuple()
-                    new_prices[row[0]] = price_getter.get_price(row[2], row[1], match_and=match_and, match_or=match_or)  # get_price returns a tuple of price, product url
+
+                    Scraper = globals()[row[1]]
+                    new_prices[row[0]] = Scraper.scrape(row[2], row[1], match_and=match_and, match_or=match_or)  # get_price returns a tuple of price, product url
                     price_alert_threshold = Crud.get_value('product', 'price_alert_threshold', {'productid': row[0]})
                     if new_prices[row[0][0]] < price_alert_threshold and (first or new_prices[row[0][0]] < prices[row[0][0]]):
                         print('Price %s is below threshold %s for product %s' % (new_prices[row[0][0]], price_alert_threshold, row[0]))
 
+                        # Alerts
+                        title = f'{row[0]} in stock at {row[4]} for £{new_prices[row[0][0]]}'
+                        body = f'Product {row[0]} in stock at {row[4]} for £{new_prices[row[0][0]]}\n{new_prices[row[0][1]]}'
+
                         # Pushbullet
-                        notifier.Pushbullet.send(f'{row[0]} in stock at {row[4]} for £{new_prices[row[0][0]]}',
-                                                 f'Product {row[0]} in stock at {row[4]} for £{new_prices[row[0][0]]}\n{new_prices[row[0][1]]}')
+                        if enums.EnumAlertCarriers.PushBullet in config.NOTIFIERS:
+                            notifier.PushBullet.send(title, body, row[7])
+
+                        if enums.EnumAlertCarriers.SMS_Twilio in config.NOTIFIERS:
+                            notifier.TwilioSMS.send(title, body, row[7])
+
+                        if enums.EnumAlertCarriers.WhatsApp in config.NOTIFIERS:
+                            notifier.WhatsApp.send(title, body, row[7])
+
+                        if enums.EnumAlertCarriers.Telegram in config.NOTIFIERS:
+                            notifier.Telegram.send(title, body, row[7])
 
                 if first:
                     prices = new_prices

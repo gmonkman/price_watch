@@ -8,7 +8,7 @@ import funclite.stringslib as _stringslib
 from orm import Log as _Log
 from enums import *
 
-__all__ = ['PushBullet', 'Telegram', 'WhatsApp']
+__all__ = ['PushBullet', 'Telegram', 'WhatsApp', 'TwilioSMS']
 try:
     import pywhatkit as _pywhatkit  # noqa
 except ImportError:
@@ -20,6 +20,18 @@ try:
 except ImportError:
     print('Failed to import pushbullet.')
     _Pushbullet = None
+
+try:
+    from pushbullet import Pushbullet as _Pushbullet
+except ImportError:
+    print('Failed to import pushbullet.')
+    _Pushbullet = None
+
+try:
+    from twilio.rest import Client as _TwilioClient
+except ImportError:
+    print('Failed to import twilio.')
+    _TwilioClient = None
 
 import config as _config
 
@@ -34,13 +46,18 @@ class Telegram(_ABC):
     """
 
     @staticmethod
-    def send(message: str, monitorid: int = None) -> None:
+    def send(title: str, body: str, monitorid: int = None) -> None:
         """
-            Sends message to chat
+            Sends message to chat.
+            Telegram has no seperate title however, it is in this method for consistency.
+            The title and body are concatenated with a newline
+
             Parameters:
-             message(str): The string of the message to be sent
+            title(str): Title of the message
+             body(str): The string of the message to be sent
              monitorid(int): The monitorid of the chat, this is optional and is used for logging purposes
         """
+        message = f'{title}\n\n{body}'
         try:
             data = {
                 "chat_id": _config.Telegram.chat_id,
@@ -87,6 +104,37 @@ class PushBullet(_ABC):
             _logit('PushBullet', monitorid, e)
 
 
+class TwilioSMS(_ABC):
+    """
+    This is a namespace class for SMS notifications provided by the twilio SaaS
+
+    Methods:
+        send: Send notification message with Pushbullet
+    """
+
+    @staticmethod
+    def send(title: str, body: str, monitorid: int = None) -> None:
+        """
+        Send SMS message with TwilioSMS.
+        SMS messages don't support titles however, it is in this method for consistency.
+        The title and body are concatenated with a newline.
+
+        Args:
+            title: Title of the message
+            body: Body of the message
+            monitorid: Monitorid, used for logging purposes
+
+        Returns:
+            None
+        """
+        message = f'{title}\n\n{body}'
+        try:
+            TC = _TwilioClient(_config.TwilioSMS.account_sid, _config.TwilioSMS.auth_token)
+            M = TC.messages.create(body=message, to=_config.TwilioSMS.send_to_phone, from_=_config.TwilioSMS.send_from_phone)
+            print(M.body)
+        except Exception as e:
+            _logit('TwilioSMS', monitorid, e)
+
 
 # region helper methods
 def _logit(notifier: str, monitorid: int | None, e: Exception) -> None:
@@ -100,6 +148,11 @@ def _logit(notifier: str, monitorid: int | None, e: Exception) -> None:
         Log_.save()
         print(Log_.comment)
 # endregion helper methods
+
+
+
+
+
 
 if __name__ == "__main__":
     pass
